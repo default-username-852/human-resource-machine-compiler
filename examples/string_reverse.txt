@@ -1,0 +1,19 @@
+#add_square 13
+#define zero *14
+#define length *12
+#define temp *11
+
+loop {
+    length = zero;
+    temp = input();
+    while(temp != 0) {
+        *length = temp;
+        length++;
+        temp = input();
+    }
+    length--;
+    while(length >= 0) {
+        output(*length);
+        length--;
+    }
+}

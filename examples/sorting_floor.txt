@@ -1,0 +1,41 @@
+#add_square 23
+#define array_length *20
+#define zero *24
+#define inserting *21
+#define comparing_to *22
+#define moving *19
+#define temp *18
+
+loop {
+    array_length = zero;
+    array_length++;
+    *1 = input();
+
+    inserting = input();
+    while(inserting != 0) {
+        comparing_to = array_length;
+        while(inserting < *comparing_to) {
+            comparing_to--;
+            if (comparing_to == 0) {
+                break;
+            }
+        }
+        moving = array_length;
+        while(moving > comparing_to) {
+            temp = moving;
+            temp++;
+            *temp = *moving;
+            moving--;
+        }
+        comparing_to++;
+        *comparing_to = inserting;
+        array_length++;
+        inserting = input();
+    }
+    moving = zero;
+    moving++;
+    while(moving <= array_length) {
+        output(*moving);
+        moving++;
+    }
+}
