@@ -329,7 +329,7 @@ fn parse_tokenized_expression(tokens: Vec<Lexeme>) -> Result<Vec<Expression>, Co
     let mut out = Vec::new();
     let mut current_tokens = tokens;
     
-    for _ in 0..10 { //1000 was chosen arbitrarily to emulate a big number, might need to be refactored at a later point
+    for _ in 0..50 { //1000 was chosen arbitrarily to emulate a big number, might need to be refactored at a later point
         println!("current tokens {:?}", current_tokens);
         let mut n = 0;
         for expression_class in &*EXPRESSIONS {
