@@ -1,19 +1,21 @@
 use crate::lexer::{Lexeme, LexemePattern, LexemeMatcher, Quantity, DepthType, DepthCriteria};
-use crate::CompileError;
+use crate::{CompileError, parser2};
 use crate::compiler::Command;
 use std::ops::Range;
 use lazy_static::lazy_static;
 use matches::matches;
+use crate::parser2::*;
 
 pub fn parse_tokens(tokens: Vec<Lexeme>) -> Result<AST, CompileError> {
-    Ok(AST::new(parse_tokenized_expression(tokens)?))
+    AST::new(parse_tokenized_expression(tokens)?)
 }
 
-type Syntax = (LexemePattern, Box<dyn Fn(Vec<Range<usize>>, &[Lexeme]) -> Result<Expression, CompileError> + Send + Sync>);
+type Syntax = (LexemePattern, Box<dyn Fn(Vec<Range<usize>>, &[Lexeme]) ->
+    Result<AnyExpressionType, CompileError> + Send + Sync>);
 
-fn parse_tokenized_expression(tokens: Vec<Lexeme>) -> Result<Vec<Expression>, CompileError> {
-    lazy_static! {
-        static ref EXPRESSIONS: Vec<Vec<Syntax>> = vec![
+fn parse_tokenized_expression(tokens: Vec<Lexeme>) -> Result<Vec<AnyExpressionType>, CompileError> {
+    //lazy_static! {
+        /*static ref*/ let EXPRESSIONS: Vec<Vec<Syntax>> = vec![
             vec![
                 (LexemePattern::new(vec![
                     (LexemeMatcher::new(Box::new(|l| matches!(l, Lexeme::Loop)), None), Quantity::Finite(1)),
@@ -22,9 +24,11 @@ fn parse_tokenized_expression(tokens: Vec<Lexeme>) -> Result<Vec<Expression>, Co
                         Some((DepthCriteria::OneOrMore, DepthType::CurlyBrackets))), Quantity::Infinite),
                     (LexemeMatcher::new(Box::new(|l| matches!(l, Lexeme::RightCurlyBracket)), None), Quantity::Finite(1)),
                 ]), Box::new(|t, tokens| {
-                    let inner = parse_tokenized_expression(tokens[t[2].clone()].to_vec())?;
+                    let inner = parse_tokenized_expression(tokens[t[2].clone()].to_vec())?.into_iter()
+                        .map(|e| e.expression().unwrap())
+                        .collect();
                     
-                    Ok(Expression::Loop(inner))
+                    Ok((Box::new(Loop::new(inner)) as Box<dyn Expression>).into())
                 })),
                 (LexemePattern::new(vec![
                     (LexemeMatcher::new(Box::new(|l| matches!(l, Lexeme::While)), None), Quantity::Finite(1)),
@@ -38,10 +42,13 @@ fn parse_tokenized_expression(tokens: Vec<Lexeme>) -> Result<Vec<Expression>, Co
                     (LexemeMatcher::new(Box::new(|l| matches!(l, Lexeme::RightCurlyBracket)), None), Quantity::Finite(1)),
                 ]), Box::new(|t, tokens| {
                     let mut exp = parse_tokenized_expression(tokens[t[2].clone()].to_vec())?;
-                    let commands = parse_tokenized_expression(tokens[t[5].clone()].to_vec())?;
+                    let commands = parse_tokenized_expression(tokens[t[5].clone()].to_vec())?.into_iter()
+                        .map(|e| e.expression().unwrap())
+                        .collect();
                     assert_eq!(exp.len(), 1);
                     
-                    Ok(Expression::While(Box::new(exp.remove(0)), commands))
+                    Ok((Box::new(While::new(
+                        exp.remove(0).logical().unwrap(), commands)) as Box<dyn Expression>).into())
                 })),
                 (LexemePattern::new(vec![
                     (LexemeMatcher::new(Box::new(|l| matches!(l, Lexeme::If)), None), Quantity::Finite(1)),
@@ -60,11 +67,16 @@ fn parse_tokenized_expression(tokens: Vec<Lexeme>) -> Result<Vec<Expression>, Co
                     (LexemeMatcher::new(Box::new(|l| matches!(l, Lexeme::RightCurlyBracket)), None), Quantity::Finite(1)),
                 ]), Box::new(|t, tokens| {
                     let mut exp = parse_tokenized_expression(tokens[t[2].clone()].to_vec())?;
-                    let commands1 = parse_tokenized_expression(tokens[t[5].clone()].to_vec())?;
-                    let commands2 = parse_tokenized_expression(tokens[t[9].clone()].to_vec())?;
+                    let commands1 = parse_tokenized_expression(tokens[t[5].clone()].to_vec())?.into_iter()
+                        .map(|e| e.expression().unwrap())
+                        .collect();
+                    let commands2 = parse_tokenized_expression(tokens[t[9].clone()].to_vec())?.into_iter()
+                        .map(|e| e.expression().unwrap())
+                        .collect();
                     assert_eq!(exp.len(), 1);
                     
-                    Ok(Expression::IfElse(Box::new(exp.remove(0)), commands1, commands2))
+                    Ok((Box::new(IfElse::new(
+                        exp.remove(0).logical().unwrap(), commands1, commands2)) as Box<dyn Expression>).into())
                 })),
                 (LexemePattern::new(vec![
                     (LexemeMatcher::new(Box::new(|l| matches!(l, Lexeme::If)), None), Quantity::Finite(1)),
@@ -78,10 +90,13 @@ fn parse_tokenized_expression(tokens: Vec<Lexeme>) -> Result<Vec<Expression>, Co
                     (LexemeMatcher::new(Box::new(|l| matches!(l, Lexeme::RightCurlyBracket)), None), Quantity::Finite(1)),
                 ]), Box::new(|t, tokens| {
                     let mut exp = parse_tokenized_expression(tokens[t[2].clone()].to_vec())?;
-                    let commands = parse_tokenized_expression(tokens[t[5].clone()].to_vec())?;
+                    let commands = parse_tokenized_expression(tokens[t[5].clone()].to_vec())?.into_iter()
+                        .map(|e| e.expression().unwrap())
+                        .collect();
                     assert_eq!(exp.len(), 1);
                     
-                    Ok(Expression::If(Box::new(exp.remove(0)), commands))
+                    return Ok((Box::new(If::new(
+                        exp.remove(0).logical().unwrap(), commands)) as Box<dyn Expression>).into());
                 })),
                 (LexemePattern::new(vec![
                     (LexemeMatcher::new(Box::new(|l| !matches!(l, Lexeme::Semicolon)),
@@ -105,12 +120,17 @@ fn parse_tokenized_expression(tokens: Vec<Lexeme>) -> Result<Vec<Expression>, Co
                     assert_eq!(left.len(), 1);
                     assert_eq!(right.len(), 1);
                     
-                    if matches!(right[0], Expression::Number(0)) {
-                        return Ok(Expression::NotZero(Box::new(left.remove(0))));
-                    } else if matches!(left[0], Expression::Number(0)) {
-                        return Ok(Expression::NotZero(Box::new(right.remove(0))));
+                    if right[0] == (Box::new(Number::new(0)) as Box<dyn Value>).into() {
+                        return Ok((Box::new(
+                            NotZero::new(left.remove(0).expression().unwrap())) as Box<dyn Logical>).into());
+                    } else if left[0] == (Box::new(Number::new(0)) as Box<dyn Value>).into() {
+                        return Ok((Box::new(
+                            NotZero::new(right.remove(0).expression().unwrap())) as Box<dyn Logical>).into());
                     }
-                    Ok(Expression::NotZero(Box::new(Expression::Subtract(Box::new(left.remove(0)), Box::new(right.remove(0))))))
+                    
+                    Ok((Box::new(NotZero::new(Box::new(Subtract::new(
+                        left.remove(0).expression().unwrap(),
+                        right.remove(0).expression().unwrap())))) as Box<dyn Logical>).into())
                 })),
                 (LexemePattern::new(vec![
                     (LexemeMatcher::new(Box::new(|l| !matches!(l, Lexeme::Equals)), None), Quantity::Infinite),
@@ -122,10 +142,16 @@ fn parse_tokenized_expression(tokens: Vec<Lexeme>) -> Result<Vec<Expression>, Co
                     assert_eq!(left.len(), 1);
                     assert_eq!(right.len(), 1);
                     
-                    if matches!(right[0], Expression::Number(0)) {
-                        return Ok(Expression::IsZero(Box::new(left.remove(0))));
+                    if right[0] == (Box::new(Number::new(0)) as Box<dyn Value>).into() {
+                        return Ok((Box::new(
+                            IsZero::new(left.remove(0).expression().unwrap())) as Box<dyn Logical>).into())
+                    } else if left[0] == (Box::new(Number::new(0)) as Box<dyn Value>).into() {
+                        return Ok((Box::new(
+                            IsZero::new(right.remove(0).expression().unwrap())) as Box<dyn Logical>).into())
                     }
-                    Ok(Expression::IsZero(Box::new(Expression::Subtract(Box::new(left.remove(0)), Box::new(right.remove(0))))))
+                    Ok((Box::new(IsZero::new(Box::new(Subtract::new(
+                        left.remove(0).expression().unwrap(),
+                        right.remove(0).expression().unwrap())))) as Box<dyn Logical>).into())
                 })),
                 (LexemePattern::new(vec![
                     (LexemeMatcher::new(Box::new(|l| !matches!(l, Lexeme::LeftArrow)), None), Quantity::Infinite),
@@ -138,10 +164,12 @@ fn parse_tokenized_expression(tokens: Vec<Lexeme>) -> Result<Vec<Expression>, Co
                     assert_eq!(left.len(), 1);
                     assert_eq!(right.len(), 1);
                     
-                    if matches!(right[0], Expression::Number(0)) {
-                        return Ok(Expression::LessOrEqualToZero(Box::new(left.remove(0))));
+                    if right[0] == (Box::new(Number::new(0)) as Box<dyn Value>).into() {
+                        return Ok((Box::new(
+                            LessOrEqualToZero::new(left.remove(0).expression().unwrap())) as Box<dyn Logical>).into())
                     }
-                    Ok(Expression::LessOrEqualToZero(Box::new(Expression::Subtract(Box::new(left.remove(0)), Box::new(right.remove(0))))))
+                    Ok(AnyExpressionType::new(None, None, Some(Box::new(LessOrEqualToZero::new(Box::new(Subtract::new(
+                        left.remove(0).expression().unwrap(), right.remove(0).expression().unwrap())))))))
                 })),
                 (LexemePattern::new(vec![
                     (LexemeMatcher::new(Box::new(|l| !matches!(l, Lexeme::RightArrow)), None), Quantity::Infinite),
@@ -154,10 +182,13 @@ fn parse_tokenized_expression(tokens: Vec<Lexeme>) -> Result<Vec<Expression>, Co
                     assert_eq!(left.len(), 1);
                     assert_eq!(right.len(), 1);
                     
-                    if matches!(right[0], Expression::Number(0)) {
-                        return Ok(Expression::GreaterOrEqualToZero(Box::new(left.remove(0))));
+                    if right[0] == (Box::new(Number::new(0)) as Box<dyn Value>).into() {
+                        return Ok((Box::new(
+                            GreaterOrEqualToZero::new(left.remove(0).expression().unwrap())) as Box<dyn Logical>).into())
                     }
-                    Ok(Expression::GreaterOrEqualToZero(Box::new(Expression::Subtract(Box::new(left.remove(0)), Box::new(right.remove(0))))))
+                    Ok((Box::new(GreaterOrEqualToZero::new(Box::new(Subtract::new(
+                        left.remove(0).expression().unwrap(),
+                        right.remove(0).expression().unwrap())))) as Box<dyn Logical>).into())
                 })),
                 (LexemePattern::new(vec![
                     (LexemeMatcher::new(Box::new(|l| !matches!(l, Lexeme::LeftArrow)), None), Quantity::Infinite),
@@ -169,10 +200,12 @@ fn parse_tokenized_expression(tokens: Vec<Lexeme>) -> Result<Vec<Expression>, Co
                     assert_eq!(left.len(), 1);
                     assert_eq!(right.len(), 1);
                     
-                    if matches!(right[0], Expression::Number(0)) {
-                        return Ok(Expression::LessThanZero(Box::new(left.remove(0))));
+                    if right[0] == (Box::new(Number::new(0)) as Box<dyn Value>).into() {
+                        return Ok((Box::new(
+                            LessThanZero::new(left.remove(0).expression().unwrap())) as Box<dyn Logical>).into());
                     }
-                    Ok(Expression::LessThanZero(Box::new(Expression::Subtract(Box::new(left.remove(0)), Box::new(right.remove(0))))))
+                    Ok(AnyExpressionType::new(None, None, Some(Box::new(LessThanZero::new(Box::new(Subtract::new(
+                        left.remove(0).expression().unwrap(), right.remove(0).expression().unwrap())))))))
                 })),
                 (LexemePattern::new(vec![
                     (LexemeMatcher::new(Box::new(|l| !matches!(l, Lexeme::RightArrow)), None), Quantity::Infinite),
@@ -184,10 +217,12 @@ fn parse_tokenized_expression(tokens: Vec<Lexeme>) -> Result<Vec<Expression>, Co
                     assert_eq!(left.len(), 1);
                     assert_eq!(right.len(), 1);
                     
-                    if matches!(right[0], Expression::Number(0)) {
-                        return Ok(Expression::GreaterThanZero(Box::new(left.remove(0))));
+                    if right[0] == (Box::new(Number::new(0)) as Box<dyn Value>).into() {
+                        return Ok((Box::new(
+                            GreaterThanZero::new(left.remove(0).expression().unwrap())) as Box<dyn Logical>).into())
                     }
-                    Ok(Expression::GreaterThanZero(Box::new(Expression::Subtract(Box::new(left.remove(0)), Box::new(right.remove(0))))))
+                    Ok(AnyExpressionType::new(None, None, Some(Box::new(GreaterThanZero::new(Box::new(Subtract::new(
+                        left.remove(0).expression().unwrap(), right.remove(0).expression().unwrap())))))))
                 })),
             ],
             vec![
@@ -198,7 +233,9 @@ fn parse_tokenized_expression(tokens: Vec<Lexeme>) -> Result<Vec<Expression>, Co
                     let mut exp = parse_tokenized_expression(tokens[t[0].clone()].to_vec())?;
                     assert_eq!(exp.len(), 1);
                     
-                    return Ok(Expression::Increment(Box::new(exp.remove(0))));
+                    Ok(AnyExpressionType::new(
+                        Some(Box::new(Increment::new(exp.remove(0).value().unwrap()))),
+                        None, None))
                 })),
                 (LexemePattern::new(vec![
                     (LexemeMatcher::new(Box::new(|l| !matches!(l, Lexeme::Minus)), None), Quantity::Infinite),
@@ -206,8 +243,10 @@ fn parse_tokenized_expression(tokens: Vec<Lexeme>) -> Result<Vec<Expression>, Co
                 ]), Box::new(|t, tokens| {
                     let mut exp = parse_tokenized_expression(tokens[t[0].clone()].to_vec())?;
                     assert_eq!(exp.len(), 1);
-                    
-                    return Ok(Expression::Decrement(Box::new(exp.remove(0))));
+    
+                    Ok(AnyExpressionType::new(
+                        Some(Box::new(Decrement::new(exp.remove(0).value().unwrap()))),
+                        None, None))
                 })),
             ],
             vec![
@@ -222,7 +261,8 @@ fn parse_tokenized_expression(tokens: Vec<Lexeme>) -> Result<Vec<Expression>, Co
                     assert_eq!(left.len(), 1);
                     assert_eq!(right.len(), 1);
                     
-                    Ok(Expression::Assign(Box::new(left.remove(0)), Box::new(right.remove(0))))
+                    Ok(AnyExpressionType::new(Some(Box::new(Assign::new(
+                        left.remove(0).value().unwrap(), right.remove(0).expression().unwrap()))), None, None))
                 })),
                 (LexemePattern::new(vec![
                     (LexemeMatcher::new(Box::new(|l| matches!(l, Lexeme::Star)), None), Quantity::Finite(1)),
@@ -234,8 +274,11 @@ fn parse_tokenized_expression(tokens: Vec<Lexeme>) -> Result<Vec<Expression>, Co
                     let mut right = parse_tokenized_expression(tokens[3..].to_vec())?;
                     assert_eq!(left.len(), 1);
                     assert_eq!(right.len(), 1);
+    
+                    println!("\t{:?}\n\t{:?}", left, right);
                     
-                    Ok(Expression::Assign(Box::new(left.remove(0)), Box::new(right.remove(0))))
+                    Ok(AnyExpressionType::new(Some(Box::new(Assign::new(
+                        left.remove(0).value().unwrap(), right.remove(0).expression().unwrap()))), None, None))
                 })),
             ],
             vec![
@@ -249,7 +292,8 @@ fn parse_tokenized_expression(tokens: Vec<Lexeme>) -> Result<Vec<Expression>, Co
                     assert_eq!(left.len(), 1);
                     assert_eq!(right.len(), 1);
                     
-                    Ok(Expression::Add(Box::new(left.remove(0)), Box::new(right.remove(0))))
+                    Ok(AnyExpressionType::new(Some(Box::new(Add::new(
+                        left.remove(0).expression().unwrap(), right.remove(0).expression().unwrap()))), None, None))
                 })),
                 (LexemePattern::new(vec![
                     (LexemeMatcher::new(Box::new(|l| !matches!(l, Lexeme::Minus)), None), Quantity::Infinite),
@@ -261,7 +305,8 @@ fn parse_tokenized_expression(tokens: Vec<Lexeme>) -> Result<Vec<Expression>, Co
                     assert_eq!(left.len(), 1);
                     assert_eq!(right.len(), 1);
                     
-                    Ok(Expression::Subtract(Box::new(left.remove(0)), Box::new(right.remove(0))))
+                    Ok(AnyExpressionType::new(Some(Box::new(Subtract::new(
+                        left.remove(0).expression().unwrap(), right.remove(0).expression().unwrap()))), None, None))
                 })),
             ],
             vec![
@@ -272,15 +317,15 @@ fn parse_tokenized_expression(tokens: Vec<Lexeme>) -> Result<Vec<Expression>, Co
                 ]), Box::new(|t, tokens| {
                     let mut res = parse_tokenized_expression(tokens[t[1].start..t[2].end].to_vec())?;
                     assert_eq!(res.len(), 1);
-                    Ok(Expression::Deref(Box::new(res.remove(0))))
+                    Ok(AnyExpressionType::new(None, Some(Box::new(Deref::new(res.remove(0).value().unwrap()))), None))
                 })),
-                (LexemePattern::new(vec![ //TODO: let function results be dereferenced
+                (LexemePattern::new(vec![
                     (LexemeMatcher::new(Box::new(|l| matches!(l, Lexeme::Star)), None), Quantity::Finite(1)),
                     (LexemeMatcher::new(Box::new(|l| matches!(l, Lexeme::Number(_))), None), Quantity::Finite(1)),
                 ]), Box::new(|t, tokens| {
                     let mut res = parse_tokenized_expression(tokens[t[1].clone()].to_vec())?;
                     assert_eq!(res.len(), 1);
-                    Ok(Expression::Deref(Box::new(res.remove(0))))
+                    Ok(AnyExpressionType::new(Some(Box::new(Deref::new(res.remove(0).value().unwrap()))), None, None))
                 })),
             ],
             vec![
@@ -293,7 +338,7 @@ fn parse_tokenized_expression(tokens: Vec<Lexeme>) -> Result<Vec<Expression>, Co
                 ]), Box::new(|t, tokens| {
                     let mut arg = parse_tokenized_expression(tokens[t[2].clone()].to_vec())?;
                     assert_eq!(arg.len(), 1);
-                    return Ok(Expression::Output(Box::new(arg.remove(0))));
+                    Ok(AnyExpressionType::new(Some(Box::new(Output::new(arg.remove(0).expression().unwrap()))), None, None))
                 })),
             ],
             vec![
@@ -302,7 +347,7 @@ fn parse_tokenized_expression(tokens: Vec<Lexeme>) -> Result<Vec<Expression>, Co
                     (LexemeMatcher::new(Box::new(|l| matches!(l, Lexeme::LeftParentheses)), None), Quantity::Finite(1)),
                     (LexemeMatcher::new(Box::new(|l| matches!(l, Lexeme::RightParentheses)), None), Quantity::Finite(1)),
                 ]), Box::new(|t, tokens| {
-                    return Ok(Expression::Input);
+                    return Ok(AnyExpressionType::new(Some(Box::new(parser2::Input {})), None, None));
                 })),
             ],
             vec![
@@ -310,21 +355,21 @@ fn parse_tokenized_expression(tokens: Vec<Lexeme>) -> Result<Vec<Expression>, Co
                     (LexemeMatcher::new(Box::new(|l| matches!(l, Lexeme::Number(_))), None), Quantity::Finite(1))
                 ]), Box::new(|t, tokens| {
                     if t[0].start == 0 {
-                        return Ok(Expression::Number(match tokens[0] {
+                        return Ok(AnyExpressionType::new(None, Some(Box::new(Number::new(match tokens[0] {
                             Lexeme::Number(a) => a,
                             _ => panic!("nu blev något konstigt"),
-                        }));
+                        }))), None));
                     }
                     Err(CompileError::InvalidCommandError(tokens.to_vec()))
                 })),
                 (LexemePattern::new(vec![
                     (LexemeMatcher::new(Box::new(|l| matches!(l, Lexeme::Break)), None), Quantity::Finite(1))
                 ]), Box::new(|t, tokens| {
-                    Ok(Expression::Break)
+                    Ok(AnyExpressionType::new(Some(Box::new(Break {})), None, None))
                 })),
             ],
         ];
-    }
+    //}
     
     let mut out = Vec::new();
     let mut current_tokens = tokens;
@@ -382,27 +427,41 @@ fn parse_tokenized_expression(tokens: Vec<Lexeme>) -> Result<Vec<Expression>, Co
 
 #[derive(Debug)]
 pub struct AST {
-    pub root: Vec<Expression>,
+    pub root: Vec<Box<dyn Expression>>,
 }
 
 impl AST {
-    fn new(expressions: Vec<Expression>) -> Self {
-        Self { root: expressions }
+    fn new(expressions: Vec<AnyExpressionType>) -> Result<Self, CompileError> {
+        let (ok, err): (Vec<AnyExpressionType>, Vec<AnyExpressionType>) =
+            expressions.into_iter().partition(|e| e.is_expression());
+        
+        if err.len() > 0 {
+            return Err(CompileError::Error); //TODO: make me good
+        }
+        Ok(Self { root: ok.into_iter()
+            .map(|e| e.expression().unwrap())
+            .collect()})
     }
     
-    /*fn to_commands(&self, add_addr: u8) -> Vec<Command> {
-        let mut out = Vec::new();
+    fn to_commands(&self, add_addr: u8) -> Result<Vec<Command>, CompileError> {
         let mut label_counter = 0;
         
-        for expression in &self.root {
-            out.push(expression.to_command(&mut label_counter, add_addr));
+        let (ok, err): (Vec<_>, Vec<_>) = self.root.iter()
+            .map(|e| e.to_command(&mut label_counter, add_addr))
+            .partition(|e| e.is_ok());
+    
+        for e in err {
+            return e;
         }
         
-        out
-    }*/
+        Ok(ok.into_iter()
+            .map(|e| e.unwrap())
+            .flatten()
+            .collect())
+    }
 }
 
-#[derive(Debug)]
+/*#[derive(Debug)]
 pub enum Expression {
     Number(u8),
     Deref(Box<Expression>),
@@ -634,8 +693,9 @@ impl Expression {
         
         String::from("test\n")
     }
-}
+}*/
 
+/*
 fn create_label(num: &mut u8) -> String {
     let res = number_to_chars(num);
     *num += 1;
@@ -646,4 +706,4 @@ fn number_to_chars(number: &u8) -> String {
     let small = number % 16;
     let big = number / 16;
     [(big + 97) as char, (small + 97) as char].iter().collect()
-}
+}*/

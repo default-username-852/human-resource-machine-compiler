@@ -1,6 +1,7 @@
 mod preprocessor;
 mod lexer;
 mod parser;
+mod parser2;
 mod compiler;
 
 use std::fs::File;
@@ -9,7 +10,7 @@ use crate::preprocessor::{parse_macros, trim, find_add_square};
 use crate::lexer::{lex, Lexeme};
 use crate::parser::parse_tokens;
 
-#[derive(Debug)]
+#[derive(Debug, Clone, Eq, PartialEq)]
 pub enum CompileError {
     Error,
     InvalidCommandError(Vec<Lexeme>),
@@ -39,9 +40,9 @@ fn main() {
     let mut output = String::from("-- HUMAN RESOURCE MACHINE PROGRAM --\n\n");
 
     let mut label_counter = 0;
-    for command in &parsed.root {
+    /*for command in &parsed.root {
         output.extend(command.to_command(&mut label_counter, add_square).chars());
-    }
+    }*/
 
     let mut out_file = File::create("out.txt").unwrap();
 

@@ -1,7 +1,8 @@
 use std::fmt::{Display, Formatter, Error};
+use std::fmt;
 
 #[derive(Debug)]
-pub enum Command<'a> {
+pub enum Command {
     Inbox,
     Outbox,
     CopyTo(Reference),
@@ -10,13 +11,13 @@ pub enum Command<'a> {
     Subtract(Reference),
     Increment(Reference),
     Decrement(Reference),
-    Jump(&'a Label),
-    JumpIfZero(&'a Label),
-    JumpIfNegative(&'a Label),
+    Jump(LabelRef),
+    JumpIfZero(LabelRef),
+    JumpIfNegative(LabelRef),
     Label(Label),
 }
 
-impl<'a> Display for Command<'a> {
+impl Display for Command {
     fn fmt(&self, f: &mut Formatter<'_>) -> Result<(), Error> {
         write!(f, "\t{}\n", match self {
             Command::Inbox => "INBOX\t".to_string(),
@@ -27,9 +28,9 @@ impl<'a> Display for Command<'a> {
             Command::Subtract(ptr) => format!("SUB\t{}", ptr),
             Command::Increment(ptr) => format!("BUMPUP\t{}", ptr),
             Command::Decrement(ptr) => format!("BUMPDN\t{}", ptr),
-            Command::Jump(label) => format!("JUMP\t{}", label.value()),
-            Command::JumpIfZero(label) => format!("JUMPZ\t{}", label.value()),
-            Command::JumpIfNegative(label) => format!("JUMPN\t{}", label.value()),
+            Command::Jump(label) => format!("JUMP\t{}", label),
+            Command::JumpIfZero(label) => format!("JUMPZ\t{}", label),
+            Command::JumpIfNegative(label) => format!("JUMPN\t{}", label),
             Command::Label(label) => format!("{}", label),
         })
     }
@@ -37,15 +38,17 @@ impl<'a> Display for Command<'a> {
 
 #[derive(Debug)]
 pub enum Reference {
-    Literal(u8),
+    Number(u8),
     Pointer(u8),
+    PointerPointer(u8),
 }
 
 impl Display for Reference {
     fn fmt(&self, f: &mut Formatter<'_>) -> Result<(), Error> {
         match self {
-            Reference::Literal(num) => write!(f, "{}", num),
-            Reference::Pointer(num) => write!(f, "[{}]", num),
+            Reference::Pointer(num) => write!(f, "{}", num),
+            Reference::Number(num) => Err(fmt::Error),
+            Reference::PointerPointer(num) => write!(f, "[{}]", num),
         }
     }
 }
@@ -56,20 +59,42 @@ pub struct Label {
 }
 
 impl Label {
-    fn new(count: u8) -> Self {
-        Self { count }
+    pub fn new(count: &mut u8) -> Self {
+        let out = Self { count: *count };
+        *count += 1;
+        out
     }
     
-    fn value(&self) -> String {
-        let small = self.count % 16;
-        let big = self.count / 16;
-        [(big + 97) as char, (small + 97) as char].iter().collect()
+    pub fn reference(&self) -> LabelRef {
+        LabelRef::new(self)
     }
 }
 
 impl Display for Label {
     fn fmt(&self, f: &mut Formatter<'_>) -> Result<(), Error> {
-        write!(f, "{}:\n", self.value())
+        write!(f, "{}:\n", number_to_chars(&self.count))
     }
 }
 
+#[derive(Debug, Clone)]
+pub struct LabelRef {
+    count: u8
+}
+
+impl LabelRef {
+    pub fn new(label: &Label) -> Self {
+        Self { count: label.count }
+    }
+}
+
+impl Display for LabelRef {
+    fn fmt(&self, f: &mut Formatter<'_>) -> Result<(), Error> {
+        write!(f, "{}", number_to_chars(&self.count))
+    }
+}
+
+fn number_to_chars(number: &u8) -> String {
+    let small = number % 16;
+    let big = number / 16;
+    [(big + 97) as char, (small + 97) as char].iter().collect()
+}
