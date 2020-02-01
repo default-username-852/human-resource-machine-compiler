@@ -1,0 +1,56 @@
+#add_square 22
+#define zero *23
+#define ten *24
+#define ptr *20
+#define temp *21
+#define dangerous *22
+
+loop {
+    ptr = zero;
+    temp = input();
+    while(temp != 0) {
+        *ptr = temp;
+        ptr++;
+        temp = input();
+    }
+    *ptr = temp;
+    ptr++;
+
+    temp = input();
+    ptr = ten;
+    while(temp != 0) {
+        *ptr = temp;
+        ptr++;
+        temp = input();
+    }
+    *ptr = temp;
+    ptr++;
+
+    ptr = zero;
+    temp = ptr + ten;
+    loop {
+        if(*ptr == 0) {
+            ptr = zero;
+            break;
+        }
+        if(*temp == 0) {
+            ptr = ten;
+            break;
+        }
+        if(*ptr > *temp) {
+            ptr = zero;
+            break;
+        }
+        if(*ptr < *temp) {
+            ptr = ten;
+            break;
+        }
+        ptr++;
+        temp++;
+    }
+
+    while(*ptr != 0) {
+        output(*ptr);
+        ptr++;
+    }
+}

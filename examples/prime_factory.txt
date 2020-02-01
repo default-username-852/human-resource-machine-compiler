@@ -1,0 +1,28 @@
+#add_square 23
+#define zero *24
+#define number *22
+#define checking *21
+#define tmp *20
+#define rest *19
+
+loop {
+    number = input();
+    checking = zero;
+    checking++;
+    checking++;
+
+    while(checking <= number) {
+        tmp = number;
+        rest = zero;
+        while(tmp > 0) {
+            tmp = tmp - checking;
+            rest++;
+        }
+        if(tmp == 0) {
+            output(checking);
+            number = rest;
+        } else {
+            checking++;
+        }
+    }
+}

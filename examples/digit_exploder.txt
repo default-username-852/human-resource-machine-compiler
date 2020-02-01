@@ -1,0 +1,54 @@
+#add_square 8
+#define zero *9
+#define ten *10
+#define hundred *11
+#define inspecting *7
+#define count *6
+#define printed *0
+
+loop {
+    printed = zero;
+    inspecting = input();
+    count = zero;
+    while(inspecting >= 0) {
+        inspecting = inspecting - hundred;
+        count++;
+    }
+    count--;
+    inspecting = inspecting + hundred;
+    if(count != 0) {
+        output(count);
+        printed++;
+    }
+
+    count = zero;
+    while(inspecting >= 0) {
+        inspecting = inspecting - ten;
+        count++;
+    }
+    count--;
+    inspecting = inspecting + ten;
+    if(count != 0) {
+        output(count);
+        printed++;
+    } else {
+        if(printed != 0) {
+            output(count);
+        }
+    }
+
+    count = zero;
+    while(inspecting >= 0) {
+        inspecting--;
+        count++;
+    }
+    count--;
+    inspecting++;
+    if(count != 0) {
+        output(count);
+    } else {
+         if(printed != 0) {
+             output(count);
+         }
+    }
+}
