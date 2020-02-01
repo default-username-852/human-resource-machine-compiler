@@ -40,9 +40,11 @@ fn main() {
     let mut output = String::from("-- HUMAN RESOURCE MACHINE PROGRAM --\n\n");
 
     let mut label_counter = 0;
-    /*for command in &parsed.root {
-        output.extend(command.to_command(&mut label_counter, add_square).chars());
-    }*/
+    for command in &parsed.root {
+        output.extend(command.to_command(&mut label_counter, add_square, None).unwrap()
+            .into_iter()
+            .map(|e| e.to_string()));
+    }
 
     let mut out_file = File::create("out.txt").unwrap();
 
