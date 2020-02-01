@@ -72,7 +72,7 @@ impl Label {
 
 impl Display for Label {
     fn fmt(&self, f: &mut Formatter<'_>) -> Result<(), Error> {
-        write!(f, "{}:\n", number_to_chars(&self.count))
+        write!(f, "{}:", number_to_chars(&self.count))
     }
 }
 
