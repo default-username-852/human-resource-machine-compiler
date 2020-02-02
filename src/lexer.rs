@@ -1,6 +1,6 @@
 use lazy_static::lazy_static;
 use regex::Regex;
-use std::ops::{Range};
+use std::ops::Range;
 
 #[derive(Debug, Clone, Eq, PartialEq, Hash)]
 pub enum Lexeme {
@@ -108,7 +108,7 @@ impl From<Lexeme> for LexemeType {
     }
 }
 
-pub fn lex(source: &str) -> Vec<Lexeme> {
+pub fn lex(source: &str) -> Result<Vec<Lexeme>, LexError> {
     lazy_static! {
         static ref LEXEMES: Vec<(Regex, LexemeType)> = {
             vec![
@@ -133,42 +133,44 @@ pub fn lex(source: &str) -> Vec<Lexeme> {
                 (Regex::new("while"), LexemeType::While),
                 (Regex::new("break"), LexemeType::Break),
             ].into_iter()
-            .map(|e| (e.0.unwrap(), e.1))
-            .collect()
+                .map(|e| (e.0.unwrap(), e.1))
+                .collect()
         };
     }
-
+    
     let mut out = Vec::new();
     let mut copied = source.to_string();
-
+    
     while copied.len() > 0 {
         copied = copied.trim_start().to_string();
+        let mut to_remove = None;
         for lexeme_pattern in &*LEXEMES {
-            let to_remove;
-            match lexeme_pattern.0.find(&copied) {
-                Some(t) => {
-                    if t.start() == 0 {
-                        to_remove = t.as_str().to_string();
-                        match &lexeme_pattern.1 {
-                            LexemeType::Number => {
-                                out.push(Lexeme::Number(t.as_str().parse::<u8>().unwrap()));
-                            }
-                            a => {
-                                out.push(a.clone().into());
-                            }
+            if let Some(t) = lexeme_pattern.0.find(&copied) {
+                if t.start() == 0 {
+                    to_remove = Some(t.as_str().to_string());
+                    match &lexeme_pattern.1 {
+                        LexemeType::Number => {
+                            out.push(Lexeme::Number(t.as_str().parse::<u8>().unwrap()));
                         }
-                    } else {
-                        to_remove = String::from("");
+                        a => {
+                            out.push(a.clone().into());
+                        }
                     }
                 }
-                None => { to_remove = String::from(""); }
             }
-
-            copied.replace_range(0..to_remove.len(), "");
+        }
+        
+        match to_remove {
+            Some(t) => {
+                copied.replace_range(0..t.len(), "");
+            }
+            None => {
+                return Err(LexError::InvalidTokenError(copied));
+            }
         }
     }
-
-    out
+    
+    Ok(out)
 }
 
 pub struct LexemePattern {
@@ -182,7 +184,7 @@ impl LexemePattern {
     
     pub fn matches(&self, lexemes: &[Lexeme]) -> Vec<Vec<Range<usize>>> {
         let mut out = Vec::new();
-    
+        
         let parentheses_depth =
             create_depth_table(lexemes, Lexeme::LeftParentheses, Lexeme::RightParentheses);
         let curly_brackets_depth =
@@ -206,16 +208,16 @@ impl LexemePattern {
                 match character.1 {
                     Quantity::Finite(num) => {
                         let range = ptr..ptr + num;
-    
+                        
                         if ptr >= lexemes.len() || range.end > lexemes.len() {
                             matches = false;
                             break;
                         }
-    
+                        
                         if !lexemes[range.clone()].iter()
                             .enumerate()
                             .all(|e|
-                                character.0.matches(e.1, depth_table[e.0 + ptr]
+                                character.0.matches(e.1, depth_table[e.0 + ptr],
                                 )) {
                             matches = false;
                             break;
@@ -254,7 +256,7 @@ impl LexemePattern {
                 out.push(ranges);
             }
         }
-    
+        
         out
     }
 }
@@ -310,4 +312,9 @@ fn create_depth_table(tokens: &[Lexeme], deeper: Lexeme, shallower: Lexeme) -> V
     }
     
     depth
+}
+
+#[derive(Debug, Clone, Eq, PartialEq)]
+pub enum LexError {
+    InvalidTokenError(String),
 }

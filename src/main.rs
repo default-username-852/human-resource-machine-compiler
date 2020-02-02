@@ -30,7 +30,7 @@ fn main() {
     read = trim(read);
     println!("trimmed");
     
-    let lexed = lex(&read);
+    let lexed = lex(&read).unwrap();
     println!("lexed {:?}", lexed);
     let parsed = parse_tokens(lexed).unwrap();
     println!("parsed");
