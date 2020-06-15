@@ -38,11 +38,11 @@ loop {
             break;
         }
         if(*ptr > *temp) {
-            ptr = zero;
+            ptr = ten;
             break;
         }
         if(*ptr < *temp) {
-            ptr = ten;
+            ptr = zero;
             break;
         }
         ptr++;
